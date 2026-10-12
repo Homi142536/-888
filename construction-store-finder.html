@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>หาร้านวัสดุก่อสร้างใกล้หน้างาน</title>
+
+  <!-- ฟอนต์ไทยจาก Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============ 1) สไตล์ (CSS) ============ */
+    /* ตัวแปรสี: แก้ที่นี่ที่เดียว สีทั้งเว็บจะเปลี่ยนตาม */
+    :root {
+      --concrete: #E8E6E1;   /* พื้นหลัง สีปูนเปลือย */
+      --paper: #F7F6F3;      /* พื้นการ์ด */
+      --ink: #172033;        /* สีตัวอักษรหลัก น้ำเงินเข้ม */
+      --muted: #5C6475;      /* ตัวอักษรรอง */
+      --line: #CFCBC2;       /* เส้นขอบ */
+      --safety: #F2B705;     /* เหลืองเซฟตี้ ใช้เป็นสีเน้น */
+      --blue: #2456A6;       /* น้ำเงินแบบพิมพ์เขียว */
+      --danger: #B3261E;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "Sarabun", system-ui, sans-serif;
+      font-size: 16px;
+      color: var(--ink);
+      background: var(--concrete);
+    }
+    h1, h2, button, .chip { font-family: "Prompt", "Sarabun", sans-serif; }
+
+    /* โครงหน้า: ซ้าย = แผงควบคุม, ขวา = แผนที่ */
+    .app { display: grid; grid-template-columns: 420px 1fr; height: 100%; }
+    .panel { display: flex; flex-direction: column; min-height: 0; background: var(--paper); border-right: 2px solid var(--ink); }
+    .map-wrap { position: relative; min-height: 0; }
+    #map { position: absolute; inset: 0; }
+
+    /* หัวเว็บ */
+    header { padding: 20px 20px 16px; border-bottom: 2px solid var(--ink); background: var(--safety); }
+    header h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; line-height: 1.25; }
+    header p { margin: 0; font-size: 14px; }
+
+    /* ฟอร์มค้นหา */
+    .controls { padding: 16px 20px; border-bottom: 1px solid var(--line); display: grid; gap: 12px; }
+    label { font-weight: 600; font-size: 14px; display: block; margin-bottom: 4px; }
+    .row { display: flex; gap: 8px; }
+    input[type="text"], select {
+      width: 100%; padding: 10px 12px; font: inherit; color: var(--ink);
+      background: #fff; border: 1.5px solid var(--ink); border-radius: 4px;
+    }
+    button {
+      padding: 10px 14px; font-size: 15px; font-weight: 600; color: var(--ink);
+      background: #fff; border: 1.5px solid var(--ink); border-radius: 4px; cursor: pointer;
+    }
+    button:hover { background: var(--concrete); }
+    button.primary { background: var(--ink); color: #fff; }
+    button.primary:hover { background: #26324d; }
+    button:disabled { opacity: .5; cursor: wait; }
+    :focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+    /* ปุ่มเลือกประเภทร้าน */
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      padding: 6px 12px; font-size: 14px; font-weight: 500;
+      border: 1.5px solid var(--ink); border-radius: 999px; background: #fff; cursor: pointer;
+    }
+    .chip[aria-pressed="true"] { background: var(--ink); color: #fff; }
+
+    /* สถานะ + รายการร้าน */
+    .status { padding: 10px 20px; font-size: 14px; color: var(--muted); border-bottom: 1px solid var(--line); min-height: 40px; }
+    .status.error { color: var(--danger); font-weight: 600; }
+    .results { flex: 1; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+    .store { padding: 14px 20px; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .store:hover, .store.active { background: #fff; box-shadow: inset 4px 0 0 var(--safety); }
+    .store h2 { margin: 0 0 2px; font-size: 16px; font-weight: 600; }
+    .store .meta { font-size: 14px; color: var(--muted); margin: 2px 0; }
+    .store .dist { font-weight: 700; color: var(--blue); }
+    .store .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .store .actions a {
+      font-size: 14px; font-weight: 600; color: var(--ink); text-decoration: none;
+      padding: 5px 10px; border: 1.5px solid var(--ink); border-radius: 4px; background: #fff;
+    }
+    .store .actions a:hover { background: var(--safety); }
+
+    /* กล่องแจ้งเตือนกรณียังไม่ได้ใส่ API Key */
+    .setup {
+      position: absolute; inset: 0; display: none; place-items: center; padding: 24px;
+      background: var(--concrete); z-index: 5;
+    }
+    .setup.show { display: grid; }
+    .setup-box { max-width: 520px; background: var(--paper); border: 2px solid var(--ink); padding: 24px; }
+    .setup-box h2 { margin-top: 0; }
+    .setup-box code { background: #fff; padding: 2px 6px; border: 1px solid var(--line); }
+
+    /* มือถือ: แผนที่อยู่บน รายการอยู่ล่าง */
+    @media (max-width: 800px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: 45% 1fr; }
+      .map-wrap { order: -1; }
+      .panel { border-right: 0; border-top: 2px solid var(--ink); }
+      header h1 { font-size: 19px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ===== แผงซ้าย ===== -->
+  <section class="panel">
+    <header>
+      <h1>หาร้านวัสดุก่อสร้างใกล้หน้างาน</h1>
+      <p>ใส่ที่อยู่หน้างาน หรือคลิกบนแผนที่เพื่อปักหมุด</p>
+    </header>
+
+    <div class="controls">
+      <div>
+        <label for="address">ที่อยู่หรือชื่อสถานที่หน้างาน</label>
+        <div class="row">
+          <input id="address" type="text" placeholder="เช่น อนุสาวรีย์ชัยสมรภูมิ กรุงเทพ">
+          <button id="btnAddress" class="primary">ค้นหา</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="btnLocate" style="flex:1">ใช้ตำแหน่งปัจจุบันของฉัน</button>
+      </div>
+
+      <div>
+        <label for="radius">รัศมีค้นหา</label>
+        <select id="radius">
+          <option value="3">3 กม.</option>
+          <option value="5" selected>5 กม.</option>
+          <option value="10">10 กม.</option>
+          <option value="20">20 กม.</option>
+        </select>
+      </div>
+
+      <div>
+        <label id="chipLabel">ประเภทร้าน</label>
+        <div class="chips" id="chips" role="group" aria-labelledby="chipLabel"></div>
+      </div>
+    </div>
+
+    <div id="status" class="status" role="status" aria-live="polite">ยังไม่ได้เลือกตำแหน่งหน้างาน</div>
+    <ul id="results" class="results"></ul>
+  </section>
+
+  <!-- ===== แผนที่ ===== -->
+  <section class="map-wrap">
+    <div id="map"></div>
+
+    <!-- หน้านี้จะโผล่เมื่อยังไม่ได้ใส่ API Key -->
+    <div id="setup" class="setup">
+      <div class="setup-box">
+        <h2>ยังไม่ได้ใส่ API Key</h2>
+        <p>เปิดไฟล์นี้ด้วยโปรแกรมแก้โค้ด (เช่น VS Code หรือ Notepad) หา <code>GOOGLE_MAPS_API_KEY</code> ในส่วน &lt;script&gt; แล้วแทนที่ข้อความตรงนั้นด้วย API Key ของคุณ จากนั้นรีเฟรชหน้านี้</p>
+        <p>API ที่ต้องเปิดใน Google Cloud: <strong>Maps JavaScript API</strong>, <strong>Places API (New)</strong> และ <strong>Geocoding API</strong></p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ============ 2) ตั้งค่า ============ */
+
+// ★★★ ใส่ API Key ของคุณตรงนี้ (เก็บในเครื่องตัวเองเท่านั้น อย่าเผยแพร่ไฟล์ที่มี Key จริงให้คนอื่น) ★★★
+const GOOGLE_MAPS_API_KEY = "ใส่_API_KEY_ของคุณที่นี่";
+
+// จุดเริ่มต้นของแผนที่ (กรุงเทพ) จะเปลี่ยนเป็นที่อื่นก็ได้
+const DEFAULT_CENTER = { lat: 13.7563, lng: 100.5018 };
+
+// ประเภทร้านที่ให้เลือก: "label" = ข้อความบนปุ่ม, "query" = คำที่ส่งไปค้นหาใน Google
+const CATEGORIES = [
+  { label: "วัสดุก่อสร้างทั่วไป", query: "ร้านวัสดุก่อสร้าง" },
+  { label: "เหล็ก", query: "ร้านขายเหล็ก เหล็กก่อสร้าง" },
+  { label: "ปูน / คอนกรีต", query: "ปูนซีเมนต์ คอนกรีตผสมเสร็จ" },
+  { label: "สุขภัณฑ์ / กระเบื้อง", query: "ร้านสุขภัณฑ์ กระเบื้อง" },
+  { label: "ไฟฟ้า / ประปา", query: "ร้านอุปกรณ์ไฟฟ้า ประปา" },
+  { label: "สี", query: "ร้านขายสี" },
+];
+
+/* ============ 3) ตัวแปรกลางของโปรแกรม ============ */
+let map, infoWindow;
+let Place, Geocoder, AdvancedMarkerElement, PinElement; // คลาสที่โหลดมาจาก Google
+let siteCenter = null;      // พิกัดหน้างานที่เลือกอยู่
+let siteMarker = null;      // หมุดหน้างาน
+let radiusCircle = null;    // วงกลมแสดงรัศมี
+let storeMarkers = [];      // หมุดร้านทั้งหมด
+let currentCategory = CATEGORIES[0];
+
+// ทางลัดสำหรับเรียก element ตาม id
+const $ = (id) => document.getElementById(id);
+
+/* ============ 4) โหลด Google Maps ============ */
+function loadGoogleMaps() {
+  // ถ้ายังไม่ได้ใส่ Key ให้แสดงหน้าแนะนำแล้วหยุด
+  if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY.includes("ใส่_API_KEY")) {
+    $("setup").classList.add("show");
+    return;
+  }
+  const s = document.createElement("script");
+  s.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(GOOGLE_MAPS_API_KEY) +
+          "&v=weekly&loading=async&language=th&region=TH&callback=initMap";
+  s.async = true;
+  s.onerror = () => setStatus("โหลด Google Maps ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตและ API Key", true);
+  document.head.appendChild(s);
+}
+
+// Google จะเรียกฟังก์ชันนี้อัตโนมัติเมื่อโหลดเสร็จ (ชื่อต้องตรงกับ callback ด้านบน)
+async function initMap() {
+  const { Map, InfoWindow } = await google.maps.importLibrary("maps");
+  ({ AdvancedMarkerElement, PinElement } = await google.maps.importLibrary("marker"));
+  ({ Place } = await google.maps.importLibrary("places"));
+  ({ Geocoder } = await google.maps.importLibrary("geocoding"));
+
+  map = new Map($("map"), {
+    center: DEFAULT_CENTER,
+    zoom: 12,
+    mapId: "DEMO_MAP_ID",       // จำเป็นสำหรับหมุดแบบใหม่ (AdvancedMarker)
+    streetViewControl: false,
+    mapTypeControl: false,
+  });
+  infoWindow = new InfoWindow();
+
+  // คลิกบนแผนที่ = ตั้งจุดหน้างานตรงนั้น
+  map.addListener("click", (e) => {
+    setSite({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+  });
+
+  setStatus("คลิกบนแผนที่ หรือพิมพ์ที่อยู่ เพื่อเลือกตำแหน่งหน้างาน");
+}
+
+// Google จะเรียกฟังก์ชันนี้ถ้า API Key ผิดหรือถูกปฏิเสธ
+window.gm_authFailure = () => {
+  setStatus("API Key ใช้ไม่ได้ ตรวจสอบว่าเปิด API ครบและผูก Billing แล้ว", true);
+};
+
+/* ============ 5) ตั้งตำแหน่งหน้างาน ============ */
+function setSite(position) {
+  siteCenter = position;
+
+  // ย้ายหมุดหน้างาน (ถ้ายังไม่มีก็สร้างใหม่ สีน้ำเงิน)
+  if (siteMarker) {
+    siteMarker.position = position;
+  } else {
+    const pin = new PinElement({ background: "#2456A6", borderColor: "#172033", glyphColor: "#fff" });
+    siteMarker = new AdvancedMarkerElement({
+      map, position, title: "หน้างาน", content: pin.element, zIndex: 100,
+    });
+  }
+  map.panTo(position);
+  searchStores(); // เลือกตำแหน่งปุ๊บ ค้นหาร้านต่อทันที
+}
+
+// ค้นหาจากที่อยู่ (Geocoding: ข้อความ -> พิกัด)
+async function searchAddress() {
+  const text = $("address").value.trim();
+  if (!text) { setStatus("กรุณาพิมพ์ที่อยู่ก่อน", true); return; }
+  setStatus("กำลังหาตำแหน่ง...");
+  try {
+    const geocoder = new Geocoder();
+    const { results } = await geocoder.geocode({ address: text, region: "TH" });
+    if (!results.length) { setStatus("ไม่พบสถานที่นี้ ลองพิมพ์ให้ละเอียดขึ้น", true); return; }
+    const loc = results[0].geometry.location;
+    setSite({ lat: loc.lat(), lng: loc.lng() });
+  } catch (err) {
+    console.error(err);
+    setStatus("ค้นหาที่อยู่ไม่สำเร็จ ตรวจสอบว่าเปิด Geocoding API แล้ว", true);
+  }
+}
+
+// ใช้ตำแหน่งปัจจุบันจาก GPS ของอุปกรณ์
+function useMyLocation() {
+  if (!navigator.geolocation) { setStatus("เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง", true); return; }
+  setStatus("กำลังหาตำแหน่งของคุณ...");
+  navigator.geolocation.getCurrentPosition(
+    (pos) => setSite({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+    () => setStatus("ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณาอนุญาตในเบราว์เซอร์", true),
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+/* ============ 6) ค้นหาร้านรอบหน้างาน (Places API) ============ */
+async function searchStores() {
+  if (!siteCenter) { setStatus("กรุณาเลือกตำแหน่งหน้างานก่อน", true); return; }
+
+  const radiusKm = Number($("radius").value);
+  setStatus("กำลังค้นหา" + currentCategory.label + "...");
+  clearStores();
+  drawRadius(radiusKm);
+
+  try {
+    const { places } = await Place.searchByText({
+      textQuery: currentCategory.query,
+      // fields = ข้อมูลที่ขอจาก Google (ขอเท่าที่ใช้ จะประหยัดค่าใช้จ่าย)
+      fields: ["displayName", "formattedAddress", "location", "rating",
+               "userRatingCount", "nationalPhoneNumber", "googleMapsURI"],
+      locationBias: { center: siteCenter, radius: radiusKm * 1000 },
+      maxResultCount: 20,
+      language: "th",
+      region: "th",
+    });
+
+    // คำนวณระยะทาง กรองเฉพาะที่อยู่ในรัศมี แล้วเรียงจากใกล้ไปไกล
+    const stores = places
+      .map((p) => ({ place: p, km: distanceKm(siteCenter, { lat: p.location.lat(), lng: p.location.lng() }) }))
+      .filter((s) => s.km <= radiusKm)
+      .sort((a, b) => a.km - b.km);
+
+    if (!stores.length) {
+      setStatus("ไม่พบร้านในรัศมี " + radiusKm + " กม. ลองขยายรัศมีหรือเปลี่ยนประเภทร้าน", true);
+      return;
+    }
+    setStatus("พบ " + stores.length + " ร้านในรัศมี " + radiusKm + " กม.");
+    showStores(stores);
+  } catch (err) {
+    console.error(err);
+    setStatus("ค้นหาร้านไม่สำเร็จ ตรวจสอบว่าเปิด Places API (New) แล้ว", true);
+  }
+}
+
+// วาดวงกลมรัศมี และซูมแผนที่ให้พอดี
+function drawRadius(radiusKm) {
+  if (radiusCircle) radiusCircle.setMap(null);
+  radiusCircle = new google.maps.Circle({
+    map, center: siteCenter, radius: radiusKm * 1000,
+    strokeColor: "#2456A6", strokeWeight: 2, strokeOpacity: 0.8,
+    fillColor: "#F2B705", fillOpacity: 0.08, clickable: false,
+  });
+  map.fitBounds(radiusCircle.getBounds());
+}
+
+/* ============ 7) แสดงผลร้านค้า (รายการ + หมุด) ============ */
+function showStores(stores) {
+  const list = $("results");
+
+  stores.forEach(({ place, km }, i) => {
+    // --- หมุดบนแผนที่ (สีเหลือง) ---
+    const pin = new PinElement({ background: "#F2B705", borderColor: "#172033", glyphColor: "#172033" });
+    const marker = new AdvancedMarkerElement({
+      map, position: place.location, title: place.displayName, content: pin.element,
+    });
+    marker.addListener("click", () => focusStore(i, place));
+    storeMarkers.push(marker);
+
+    // --- รายการด้านซ้าย (สร้างด้วย textContent เพื่อความปลอดภัย ไม่แทรก HTML จากภายนอกโดยตรง) ---
+    const li = document.createElement("li");
+    li.className = "store";
+    li.dataset.index = i;
+
+    const h = document.createElement("h2");
+    h.textContent = place.displayName;
+
+    const dist = document.createElement("div");
+    dist.className = "meta";
+    const d = document.createElement("span");
+    d.className = "dist";
+    d.textContent = km.toFixed(1) + " กม.";
+    dist.append(d);
+    if (place.rating) {
+      dist.append("  ·  ★ " + place.rating.toFixed(1) + " (" + (place.userRatingCount || 0) + " รีวิว)");
+    }
+
+    const addr = document.createElement("div");
+    addr.className = "meta";
+    addr.textContent = place.formattedAddress || "";
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    // ปุ่มนำทาง: เปิด Google Maps พร้อมเส้นทางจากหน้างานไปร้าน
+    const nav = document.createElement("a");
+    nav.textContent = "นำทาง";
+    nav.target = "_blank"; nav.rel = "noopener";
+    nav.href = "https://www.google.com/maps/dir/?api=1&origin=" + siteCenter.lat + "," + siteCenter.lng +
+               "&destination=" + place.location.lat() + "," + place.location.lng();
+    actions.append(nav);
+    // ปุ่มโทร (ถ้ามีเบอร์)
+    if (place.nationalPhoneNumber) {
+      const tel = document.createElement("a");
+      tel.textContent = "โทร " + place.nationalPhoneNumber;
+      tel.href = "tel:" + place.nationalPhoneNumber.replace(/[^0-9+]/g, "");
+      actions.append(tel);
+    }
+    // ปุ่มดูใน Google Maps (รีวิว รูป เวลาเปิด-ปิด)
+    if (place.googleMapsURI) {
+      const gm = document.createElement("a");
+      gm.textContent = "ดูรายละเอียด";
+      gm.target = "_blank"; gm.rel = "noopener";
+      gm.href = place.googleMapsURI;
+      actions.append(gm);
+    }
+
+    li.append(h, dist, addr, actions);
+    li.addEventListener("click", (e) => {
+      if (e.target.tagName !== "A") focusStore(i, place); // คลิกที่ปุ่มลิงก์ไม่ต้องซูม
+    });
+    list.append(li);
+  });
+}
+
+// เมื่อคลิกร้าน: เลื่อนแผนที่ไปหาร้าน เปิดป้ายชื่อ และไฮไลต์รายการ
+function focusStore(index, place) {
+  document.querySelectorAll(".store").forEach((el) => el.classList.remove("active"));
+  const li = document.querySelector('.store[data-index="' + index + '"]');
+  li.classList.add("active");
+  li.scrollIntoView({ block: "nearest", behavior: "smooth" });
+
+  infoWindow.setContent(place.displayName); // ใส่เป็นข้อความล้วน ปลอดภัย
+  infoWindow.open({ map, anchor: storeMarkers[index] });
+  map.panTo(place.location);
+}
+
+function clearStores() {
+  storeMarkers.forEach((m) => (m.map = null));
+  storeMarkers = [];
+  $("results").innerHTML = "";
+  if (infoWindow) infoWindow.close();
+}
+
+/* ============ 8) ฟังก์ชันช่วยเหลือ ============ */
+// คำนวณระยะทางเส้นตรงระหว่าง 2 พิกัด (สูตร Haversine) หน่วยกิโลเมตร
+function distanceKm(a, b) {
+  const R = 6371;
+  const toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function setStatus(text, isError = false) {
+  const el = $("status");
+  el.textContent = text;
+  el.classList.toggle("error", isError);
+}
+
+/* ============ 9) ผูกปุ่มกับฟังก์ชัน แล้วเริ่มทำงาน ============ */
+// สร้างปุ่มประเภทร้าน
+CATEGORIES.forEach((cat, i) => {
+  const b = document.createElement("button");
+  b.className = "chip";
+  b.type = "button";
+  b.textContent = cat.label;
+  b.setAttribute("aria-pressed", i === 0 ? "true" : "false");
+  b.addEventListener("click", () => {
+    currentCategory = cat;
+    document.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", "false"));
+    b.setAttribute("aria-pressed", "true");
+    if (siteCenter) searchStores(); // ถ้าเลือกหน้างานแล้ว ค้นหาใหม่ทันที
+  });
+  $("chips").append(b);
+});
+
+$("btnAddress").addEventListener("click", searchAddress);
+$("address").addEventListener("keydown", (e) => { if (e.key === "Enter") searchAddress(); });
+$("btnLocate").addEventListener("click", useMyLocation);
+$("radius").addEventListener("change", () => { if (siteCenter) searchStores(); });
+
+loadGoogleMaps();
+</script>
+</body>
+</html>
